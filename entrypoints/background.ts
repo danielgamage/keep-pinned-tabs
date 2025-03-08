@@ -1,14 +1,23 @@
 export default defineBackground(() => {
-  // Track both current and previous tabs
-  let nowTab: number | undefined;
-  let prevTab: number | undefined;
+  // Track recent tabs using a Set
+  const recentTabs = new Set<number>();
+  const MAX_RECENT_TABS = 10; // Keep track of last 10 tabs
 
+  console.log("Hello background.");
+  
   // Track tab changes
   browser.tabs.onActivated.addListener(async (activeInfo) => {
-    // Update previous tab to be the current tab before we change it
-    prevTab = nowTab;
-    // Set the new current tab
-    nowTab = activeInfo.tabId;
+    console.log({ activeInfo });
+    // Remove tab if it exists and add it to the end
+    recentTabs.delete(activeInfo.tabId);
+    recentTabs.add(activeInfo.tabId);
+    
+    // Keep only the most recent tabs
+    if (recentTabs.size > MAX_RECENT_TABS) {
+      const oldestTab = recentTabs.values().next().value;
+      recentTabs.delete(oldestTab);
+    }
+    console.log(recentTabs)
   });
 
   // Handle CMD+W keyboard shortcut
@@ -17,6 +26,7 @@ export default defineBackground(() => {
       const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       if (!currentTab) return;
+      console.log(recentTabs)
 
       // Check if tab is in "Favorites" group
       const isInFavorites = currentTab.groupId !== -1
@@ -25,26 +35,37 @@ export default defineBackground(() => {
 
       // If tab is pinned or in Favorites group
       if (currentTab.pinned || isInFavorites) {
-        if (prevTab) {
+        console.log("if (currentTab.pinned || isInFavorites) {")
+        // Remove current tab from recent tabs
+        recentTabs.delete(currentTab.id!);
+        
+        // Get most recent tab that still exists
+        for (const tabId of [...recentTabs].reverse()) {
           try {
-            // switch to previous tab if it exists, and discard the current tab
-            await browser.tabs.discard(currentTab.id!);
-            // Suspend current tab
-            await browser.tabs.update(prevTab, { active: true });
+            await browser.tabs.get(tabId); // Check if tab exists
+            await browser.tabs.update(tabId, { active: true });
+            return;
           } catch {
-            // If previous tab no longer exists, go to first tab
-            const [firstTab] = await browser.tabs.query({ index: 0 });
-            if (firstTab) {
-              await browser.tabs.update(firstTab.id!, { active: true });
-            }
+            recentTabs.delete(tabId); // Remove if tab no longer exists
           }
         }
-        // await browser.tabs.remove(currentTab.id!);
-        return;
+        
+        // If no recent tabs exist, go to first tab
+        const [firstTab] = await browser.tabs.query({ index: 0 });
+        if (firstTab) {
+          await browser.tabs.update(firstTab.id!, { active: true });
+        }
       } else {
+        console.log("} else {")
+        recentTabs.delete(currentTab.id!);
         // Close tab
         await browser.tabs.remove(currentTab.id!);
       }
     }
+  });
+
+  // Clean up closed tabs from the Set
+  browser.tabs.onRemoved.addListener((tabId) => {
+    recentTabs.delete(tabId);
   });
 });
