@@ -3,11 +3,8 @@ export default defineBackground(() => {
   const recentTabs = new Set<number>();
   const MAX_RECENT_TABS = 10; // Keep track of last 10 tabs
 
-  console.log("Hello background.");
-  
   // Track tab changes
   browser.tabs.onActivated.addListener(async (activeInfo) => {
-    console.log({ activeInfo });
     // Remove tab if it exists and add it to the end
     recentTabs.delete(activeInfo.tabId);
     recentTabs.add(activeInfo.tabId);
@@ -17,7 +14,6 @@ export default defineBackground(() => {
       const oldestTab = recentTabs.values().next().value;
       recentTabs.delete(oldestTab);
     }
-    console.log(recentTabs)
   });
 
   // Handle CMD+W keyboard shortcut
@@ -26,16 +22,14 @@ export default defineBackground(() => {
       const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       if (!currentTab) return;
-      console.log(recentTabs)
 
       // Check if tab is in "Favorites" group
       const isInFavorites = currentTab.groupId !== -1
         ? (await browser.tabGroups.get(currentTab.groupId))?.title === 'Favorites'
         : false;
-
+      
       // If tab is pinned or in Favorites group
       if (currentTab.pinned || isInFavorites) {
-        console.log("if (currentTab.pinned || isInFavorites) {")
         // Remove current tab from recent tabs
         recentTabs.delete(currentTab.id!);
         
@@ -55,8 +49,10 @@ export default defineBackground(() => {
         if (firstTab) {
           await browser.tabs.update(firstTab.id!, { active: true });
         }
+        
+        // Suspend current tab
+        await browser.tabs.discard(currentTab.id!);
       } else {
-        console.log("} else {")
         recentTabs.delete(currentTab.id!);
         // Close tab
         await browser.tabs.remove(currentTab.id!);
