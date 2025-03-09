@@ -24,12 +24,17 @@ export default defineBackground(() => {
       if (!currentTab) return;
 
       // Check if tab is in "Favorites" group
-      const isInFavorites = currentTab.groupId !== -1
-        ? (await browser.tabGroups.get(currentTab.groupId))?.title === 'Favorites'
-        : false;
+      let isInPinnedGroup = false;
+      if (currentTab.groupId !== -1) {
+        const tabGroupTitle = (await browser.tabGroups.get(currentTab.groupId))?.title
+        if (tabGroupTitle) {
+          const { pinnedGroups } = await storage.getMeta('sync:preferences');
+          isInPinnedGroup = (pinnedGroups ?? ['Favorites']).includes(tabGroupTitle);
+        }
+      }
       
       // If tab is pinned or in Favorites group
-      if (currentTab.pinned || isInFavorites) {
+      if (currentTab.pinned || isInPinnedGroup) {
         // Remove current tab from recent tabs
         recentTabs.delete(currentTab.id!);
         
