@@ -43,6 +43,8 @@ export default defineBackground(() => {
           try {
             await browser.tabs.get(tabId); // Check if tab exists
             await browser.tabs.update(tabId, { active: true });
+            await browser.tabs.discard(currentTab.id!);
+            
             return;
           } catch {
             recentTabs.delete(tabId); // Remove if tab no longer exists
