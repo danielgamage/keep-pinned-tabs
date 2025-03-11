@@ -1,3 +1,5 @@
+import { Preferences } from "./types";
+
 export default defineBackground(() => {
   // Track recent tabs using a Set
   const recentTabs = new Set<number>();
@@ -20,16 +22,27 @@ export default defineBackground(() => {
   browser.commands.onCommand.addListener(async (command) => {
     if (command === 'close-tab') {
       const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const {preferences}: {preferences: Preferences} = await storage.getMeta('sync:preferences');
       
       if (!currentTab) return;
+      
+      console.log({preferences})
 
       // Check if tab is in "Favorites" group
-      const isInFavorites = currentTab.groupId !== -1
-        ? (await browser.tabGroups.get(currentTab.groupId))?.title === 'Favorites'
-        : false;
+      let isInPinnedGroup = false;
+      if (currentTab.groupId !== -1) {
+        if (preferences.treatAllGroupsAsPinned) {
+          isInPinnedGroup = true;
+        } else {
+          const tabGroupTitle = (await browser.tabGroups.get(currentTab.groupId))?.title
+          if (tabGroupTitle) {
+            isInPinnedGroup = (preferences.pinnedGroups ?? ['Favorites']).includes(tabGroupTitle);
+          }
+        }
+      }
       
       // If tab is pinned or in Favorites group
-      if (currentTab.pinned || isInFavorites) {
+      if (currentTab.pinned || isInPinnedGroup) {
         // Remove current tab from recent tabs
         recentTabs.delete(currentTab.id!);
         
@@ -38,6 +51,8 @@ export default defineBackground(() => {
           try {
             await browser.tabs.get(tabId); // Check if tab exists
             await browser.tabs.update(tabId, { active: true });
+            await browser.tabs.discard(currentTab.id!);
+            
             return;
           } catch {
             recentTabs.delete(tabId); // Remove if tab no longer exists
