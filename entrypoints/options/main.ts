@@ -1,20 +1,20 @@
 import { MdInputChip } from '@material/web/chips/input-chip';
 import { MdChipSet } from '@material/web/chips/chip-set';
 import { MdOutlinedTextField } from '@material/web/textfield/outlined-text-field';
+import { MdCheckbox } from '@material/web/checkbox/checkbox';
 import { storage } from 'wxt/storage';
-console.log("HI")
-interface StorageData {
-  pinnedGroups: string[];
-}
+import type { Preferences } from '../types';
 
 class OptionsPage {
   private chipSet: MdChipSet;
   private textField: MdOutlinedTextField;
+  private checkbox: MdCheckbox;
   private form: HTMLFormElement;
 
   constructor() {
     this.chipSet = document.querySelector('md-chip-set')!;
     this.textField = document.querySelector('md-outlined-text-field')!;
+    this.checkbox = document.querySelector('md-checkbox')!;
     this.form = document.querySelector('form')!;
     
     this.initialize();
@@ -22,8 +22,9 @@ class OptionsPage {
 
   private async initialize() {
     // Load saved data
-    const data = await this.loadStoredData();
-    this.renderChips(data.pinnedGroups);
+    const preferences = await this.loadStoredData();
+    this.renderChips(preferences.pinnedGroups ?? ['Favorites']);
+    this.checkbox.checked = preferences.treatAllGroupsAsPinned ?? false;
 
     // Set up event listeners
     this.textField.addEventListener('keydown', (e) => {
@@ -38,20 +39,28 @@ class OptionsPage {
       this.removeGroup(chip.label);
     });
 
+    this.checkbox.addEventListener('change', () => {
+      this.updateTreatAllGroupsAsPinned();
+    });
+
     this.form.addEventListener('reset', () => {
-      this.resetGroups();
+      this.resetAll();
     });
   }
 
-  private async loadStoredData(): Promise<StorageData> {
+  private async loadStoredData(): Promise<Preferences> {
     const data = await storage.getMeta('sync:preferences');
-    return {
-      pinnedGroups: data.pinnedGroups ?? ['Favorites']
-    };
+    return data.preferences ?? { pinnedGroups: ['Favorites'], treatAllGroupsAsPinned: false };
   }
 
-  private async saveGroups(groups: string[]) {
-    await storage.setMeta('sync:preferences', { pinnedGroups: groups });
+  private async savePreferences(preferences: Partial<Preferences>) {
+    const currentPrefs = await this.loadStoredData();
+    await storage.setMeta("sync:preferences", { 
+      preferences: { 
+        ...currentPrefs, 
+        ...preferences 
+      } 
+    });
   }
 
   private renderChips(groups: string[]) {
@@ -68,10 +77,12 @@ class OptionsPage {
     const newGroup = this.textField.value.trim();
     if (!newGroup) return;
 
-    const data = await this.loadStoredData();
-    if (!data.pinnedGroups.includes(newGroup)) {
-      const newGroups = [...data.pinnedGroups, newGroup];
-      await this.saveGroups(newGroups);
+    const prefs = await this.loadStoredData();
+    const currentGroups = prefs.pinnedGroups ?? ['Favorites'];
+    
+    if (!currentGroups.includes(newGroup)) {
+      const newGroups = [...currentGroups, newGroup];
+      await this.savePreferences({ pinnedGroups: newGroups });
       this.renderChips(newGroups);
     }
     
@@ -79,15 +90,26 @@ class OptionsPage {
   }
 
   private async removeGroup(groupName: string) {
-    const data = await this.loadStoredData();
-    const newGroups = data.pinnedGroups.filter(g => g !== groupName);
-    await this.saveGroups(newGroups);
+    const prefs = await this.loadStoredData();
+    const newGroups = (prefs.pinnedGroups ?? ['Favorites']).filter(g => g !== groupName);
+    await this.savePreferences({ pinnedGroups: newGroups });
   }
 
-  private async resetGroups() {
-    const defaultGroups = ['Favorites'];
-    await this.saveGroups(defaultGroups);
-    this.renderChips(defaultGroups);
+  private async updateTreatAllGroupsAsPinned() {
+    await this.savePreferences({ 
+      treatAllGroupsAsPinned: this.checkbox.checked 
+    });
+  }
+
+  private async resetAll() {
+    const defaultPreferences: Preferences = {
+      pinnedGroups: ['Favorites'],
+      treatAllGroupsAsPinned: false
+    };
+    
+    await this.savePreferences(defaultPreferences);
+    this.renderChips(defaultPreferences.pinnedGroups);
+    this.checkbox.checked = defaultPreferences.treatAllGroupsAsPinned;
     this.textField.value = '';
   }
 }

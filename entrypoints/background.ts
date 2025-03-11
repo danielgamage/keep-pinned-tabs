@@ -1,3 +1,5 @@
+import { Preferences } from "./types";
+
 export default defineBackground(() => {
   // Track recent tabs using a Set
   const recentTabs = new Set<number>();
@@ -20,16 +22,22 @@ export default defineBackground(() => {
   browser.commands.onCommand.addListener(async (command) => {
     if (command === 'close-tab') {
       const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const {preferences}: {preferences: Preferences} = await storage.getMeta('sync:preferences');
       
       if (!currentTab) return;
+      
+      console.log({preferences})
 
       // Check if tab is in "Favorites" group
       let isInPinnedGroup = false;
       if (currentTab.groupId !== -1) {
-        const tabGroupTitle = (await browser.tabGroups.get(currentTab.groupId))?.title
-        if (tabGroupTitle) {
-          const { pinnedGroups } = await storage.getMeta('sync:preferences');
-          isInPinnedGroup = (pinnedGroups ?? ['Favorites']).includes(tabGroupTitle);
+        if (preferences.treatAllGroupsAsPinned) {
+          isInPinnedGroup = true;
+        } else {
+          const tabGroupTitle = (await browser.tabGroups.get(currentTab.groupId))?.title
+          if (tabGroupTitle) {
+            isInPinnedGroup = (preferences.pinnedGroups ?? ['Favorites']).includes(tabGroupTitle);
+          }
         }
       }
       
